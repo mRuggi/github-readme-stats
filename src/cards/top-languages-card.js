@@ -17,6 +17,7 @@ const MIN_CARD_WIDTH = 280;
 const DEFAULT_LANGS_COUNT = 5;
 const DEFAULT_LANG_COLOR = "#858585";
 const CARD_PADDING = 25;
+const COMPACT_LAYOUT_BASE_HEIGHT = 90;
 
 /**
  * @typedef {import("../fetchers/types").Lang} Lang
@@ -85,13 +86,23 @@ const cartesianToPolar = (centerX, centerY, x, y) => {
 };
 
 /**
+ * Calculates length of circle.
+ *
+ * @param {number} radius Radius of the circle.
+ * @returns {number} The length of the circle.
+ */
+const getCircleLength = (radius) => {
+  return 2 * Math.PI * radius;
+};
+
+/**
  * Calculates height for the compact layout.
  *
  * @param {number} totalLangs Total number of languages.
  * @returns {number} Card height.
  */
 const calculateCompactLayoutHeight = (totalLangs) => {
-  return 90 + Math.round(totalLangs / 2) * 25;
+  return COMPACT_LAYOUT_BASE_HEIGHT + Math.round(totalLangs / 2) * 25;
 };
 
 /**
@@ -112,6 +123,26 @@ const calculateNormalLayoutHeight = (totalLangs) => {
  */
 const calculateDonutLayoutHeight = (totalLangs) => {
   return 215 + Math.max(totalLangs - 5, 0) * 32;
+};
+
+/**
+ * Calculates height for the donut vertical layout.
+ *
+ * @param {number} totalLangs Total number of languages.
+ * @returns {number} Card height.
+ */
+const calculateDonutVerticalLayoutHeight = (totalLangs) => {
+  return 300 + Math.round(totalLangs / 2) * 25;
+};
+
+/**
+ * Calculates height for the pie layout.
+ *
+ * @param {number} totalLangs Total number of languages.
+ * @returns {number} Card height.
+ */
+const calculatePieLayoutHeight = (totalLangs) => {
+  return 300 + Math.round(totalLangs / 2) * 25;
 };
 
 /**
@@ -257,7 +288,7 @@ const createLanguageTextNode = ({ langs, totalSize, hideProgress }) => {
 /**
  * Create donut languages text items for all programming languages.
  *
- * @param {object[]} props Function properties.
+ * @param {object} props Function properties.
  * @param {Lang[]} props.langs Array of programming languages.
  * @param {number} props.totalSize Total size of all languages.
  * @returns {string} Donut layout programming language SVG node.
@@ -268,6 +299,7 @@ const createDonutLanguagesNode = ({ langs, totalSize }) => {
       return createCompactLangNode({
         lang,
         totalSize,
+        hideProgress: false,
         index,
       });
     }),
@@ -357,6 +389,171 @@ const renderCompactLayout = (langs, width, totalLanguageSize, hideProgress) => {
         hideProgress: hideProgress,
       })}
     </g>
+  `;
+};
+
+/**
+ * Renders donut vertical layout to display user's most frequently used programming languages.
+ *
+ * @param {Lang[]} langs Array of programming languages.
+ * @param {number} totalLanguageSize Total size of all languages.
+ * @returns {string} Compact layout card SVG object.
+ */
+const renderDonutVerticalLayout = (langs, totalLanguageSize) => {
+  // Donut vertical chart radius and total length
+  const radius = 80;
+  const totalCircleLength = getCircleLength(radius);
+
+  // SVG circles
+  let circles = [];
+
+  // Start indent for donut vertical chart parts
+  let indent = 0;
+
+  // Start delay coefficient for donut vertical chart parts
+  let startDelayCoefficient = 1;
+
+  // Generate each donut vertical chart part
+  for (const lang of langs) {
+    const percentage = (lang.size / totalLanguageSize) * 100;
+    const circleLength = totalCircleLength * (percentage / 100);
+    const delay = startDelayCoefficient * 100;
+
+    circles.push(`
+      <g class="stagger" style="animation-delay: ${delay}ms">
+        <circle 
+          cx="150"
+          cy="100"
+          r="${radius}"
+          fill="transparent"
+          stroke="${lang.color}"
+          stroke-width="25"
+          stroke-dasharray="${totalCircleLength}"
+          stroke-dashoffset="${indent}"
+          size="${percentage}"
+          data-testid="lang-donut"
+        />
+      </g>
+    `);
+
+    // Update the indent for the next part
+    indent += circleLength;
+    // Update the start delay coefficient for the next part
+    startDelayCoefficient += 1;
+  }
+
+  return `
+    <svg data-testid="lang-items">
+      <g transform="translate(0, 0)">
+        <svg data-testid="donut">
+          ${circles.join("")}
+        </svg>
+      </g>
+      <g transform="translate(0, 220)">
+        <svg data-testid="lang-names" x="${CARD_PADDING}">
+          ${createLanguageTextNode({
+            langs,
+            totalSize: totalLanguageSize,
+            hideProgress: false,
+          })}
+        </svg>
+      </g>
+    </svg>
+  `;
+};
+
+/**
+ * Renders pie layout to display user's most frequently used programming languages.
+ *
+ * @param {Lang[]} langs Array of programming languages.
+ * @param {number} totalLanguageSize Total size of all languages.
+ * @returns {string} Compact layout card SVG object.
+ */
+const renderPieLayout = (langs, totalLanguageSize) => {
+  // Pie chart radius and center coordinates
+  const radius = 90;
+  const centerX = 150;
+  const centerY = 100;
+
+  // Start angle for the pie chart parts
+  let startAngle = 0;
+
+  // Start delay coefficient for the pie chart parts
+  let startDelayCoefficient = 1;
+
+  // SVG paths
+  const paths = [];
+
+  // Generate each pie chart part
+  for (const lang of langs) {
+    if (langs.length === 1) {
+      paths.push(`
+        <circle
+          cx="${centerX}"
+          cy="${centerY}"
+          r="${radius}"
+          stroke="none"
+          fill="${lang.color}"
+          data-testid="lang-pie"
+          size="100"
+        />
+      `);
+      break;
+    }
+
+    const langSizePart = lang.size / totalLanguageSize;
+    const percentage = langSizePart * 100;
+    // Calculate the angle for the current part
+    const angle = langSizePart * 360;
+
+    // Calculate the end angle
+    const endAngle = startAngle + angle;
+
+    // Calculate the coordinates of the start and end points of the arc
+    const startPoint = polarToCartesian(centerX, centerY, radius, startAngle);
+    const endPoint = polarToCartesian(centerX, centerY, radius, endAngle);
+
+    // Determine the large arc flag based on the angle
+    const largeArcFlag = angle > 180 ? 1 : 0;
+
+    // Calculate delay
+    const delay = startDelayCoefficient * 100;
+
+    // SVG arc markup
+    paths.push(`
+      <g class="stagger" style="animation-delay: ${delay}ms">
+        <path
+          data-testid="lang-pie"
+          size="${percentage}"
+          d="M ${centerX} ${centerY} L ${startPoint.x} ${startPoint.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endPoint.x} ${endPoint.y} Z"
+          fill="${lang.color}"
+        />
+      </g>
+    `);
+
+    // Update the start angle for the next part
+    startAngle = endAngle;
+    // Update the start delay coefficient for the next part
+    startDelayCoefficient += 1;
+  }
+
+  return `
+    <svg data-testid="lang-items">
+      <g transform="translate(0, 0)">
+        <svg data-testid="pie">
+          ${paths.join("")}
+        </svg>
+      </g>
+      <g transform="translate(0, 220)">
+        <svg data-testid="lang-names" x="${CARD_PADDING}">
+          ${createLanguageTextNode({
+            langs,
+            totalSize: totalLanguageSize,
+            hideProgress: false,
+          })}
+        </svg>
+      </g>
+    </svg>
   `;
 };
 
@@ -459,6 +656,19 @@ const renderDonutLayout = (langs, width, totalLanguageSize) => {
 };
 
 /**
+ * Creates the no coding activity SVG node.
+ *
+ * @param {{color: string, text: string, layout: import("./types").TopLangOptions["layout"]}} The function prop
+ */
+const noLanguagesDataNode = ({ color, text, layout }) => {
+  return `
+    <text x="${
+      layout === "pie" || layout === "donut-vertical" ? CARD_PADDING : 0
+    }" y="11" class="stat bold" fill="${color}">${text}</text>
+  `;
+};
+
+/**
  * Renders card that display user's most frequently used programming languages.
  *
  * @param {import('../fetchers/types').TopLangData} topLangs User's most frequently used programming languages.
@@ -503,8 +713,30 @@ const renderTopLanguages = (topLangs, options = {}) => {
     : card_width;
   let height = calculateNormalLayoutHeight(langs.length);
 
+  // returns theme based colors with proper overrides and defaults
+  const colors = getCardColors({
+    title_color,
+    text_color,
+    bg_color,
+    border_color,
+    theme,
+  });
+
   let finalLayout = "";
-  if (layout === "compact" || hide_progress == true) {
+  if (langs.length === 0) {
+    height = COMPACT_LAYOUT_BASE_HEIGHT;
+    finalLayout = noLanguagesDataNode({
+      color: colors.textColor,
+      text: i18n.t("langcard.nodata"),
+      layout,
+    });
+  } else if (layout === "pie") {
+    height = calculatePieLayoutHeight(langs.length);
+    finalLayout = renderPieLayout(langs, totalLanguageSize);
+  } else if (layout === "donut-vertical") {
+    height = calculateDonutVerticalLayoutHeight(langs.length);
+    finalLayout = renderDonutVerticalLayout(langs, totalLanguageSize);
+  } else if (layout === "compact" || hide_progress == true) {
     height =
       calculateCompactLayoutHeight(langs.length) + (hide_progress ? -25 : 0);
 
@@ -514,22 +746,13 @@ const renderTopLanguages = (topLangs, options = {}) => {
       totalLanguageSize,
       hide_progress,
     );
-  } else if (layout?.toLowerCase() === "donut") {
+  } else if (layout === "donut") {
     height = calculateDonutLayoutHeight(langs.length);
     width = width + 50; // padding
     finalLayout = renderDonutLayout(langs, width, totalLanguageSize);
   } else {
     finalLayout = renderNormalLayout(langs, width, totalLanguageSize);
   }
-
-  // returns theme based colors with proper overrides and defaults
-  const colors = getCardColors({
-    title_color,
-    text_color,
-    bg_color,
-    border_color,
-    theme,
-  });
 
   const card = new Card({
     customTitle: custom_title,
@@ -562,6 +785,14 @@ const renderTopLanguages = (topLangs, options = {}) => {
         width: 100%;
       }
     }
+    .stat {
+      font: 600 14px 'Segoe UI', Ubuntu, "Helvetica Neue", Sans-Serif; fill: ${colors.textColor};
+    }
+    @supports(-moz-appearance: auto) {
+      /* Selector detects Firefox */
+      .stat { font-size:12px; }
+    }
+    .bold { font-weight: 700 }
     .lang-name {
       font: 400 11px "Segoe UI", Ubuntu, Sans-Serif;
       fill: ${colors.textColor};
@@ -579,6 +810,10 @@ const renderTopLanguages = (topLangs, options = {}) => {
     `,
   );
 
+  if (layout === "pie" || layout === "donut-vertical") {
+    return card.render(finalLayout);
+  }
+
   return card.render(`
     <svg data-testid="lang-items" x="${CARD_PADDING}">
       ${finalLayout}
@@ -592,9 +827,12 @@ export {
   radiansToDegrees,
   polarToCartesian,
   cartesianToPolar,
+  getCircleLength,
   calculateCompactLayoutHeight,
   calculateNormalLayoutHeight,
   calculateDonutLayoutHeight,
+  calculateDonutVerticalLayoutHeight,
+  calculatePieLayoutHeight,
   donutCenterTranslation,
   trimTopLanguages,
   renderTopLanguages,
